@@ -1,0 +1,314 @@
+---
+title: "Xtern FoodieX"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+library(base)
+# install and load packages
+library(knitr)
+library(tidyverse)
+library(magrittr)
+library(naniar)
+#install.packages('kableExtra')
+library(kableExtra)
+
+opts_chunk$set(echo = FALSE, 
+               warning = FALSE,
+               message = FALSE)
+
+pacman::p_load(
+  "ggplot2",
+  "knitr",
+  "arm",
+  "data.table",
+  "foreign",
+  "car",
+  "faraway",
+  "nnet",
+  "reshape2",
+  "VGAM"
+)
+```
+
+
+
+
+# 1. Introduction
+
+## 1.1 Background Research and Project Aims
+
+In order to make FoodieX the best delivery service in town, the data science team is focusing its efforts on analyzing the data set to provide useful insights into the business. 
+
+
+### 1.2.1 Variables
+
+There are total 10 variables. The data set contains Restaurant ID, Latitude, Longitude, Cuisines, Average Cost, Minimum Order, Rating, Votes, Reviews, and Cook Time.
+
+### 1.2.2 10 Observations 
+
+The head eight observations are listed below:  
+
+```{r readin_top10}
+# load in data
+foodies <- read_csv("C:/Users/49431/Downloads/2020-XTern-DS.csv", col_names = TRUE)
+# top 10 observations
+
+
+
+
+foodies$Average_Cost = as.numeric(gsub("\\$","",foodies$Average_Cost))
+foodies$Minimum_Order = as.numeric(gsub("\\$","",foodies$Minimum_Order))
+
+
+
+foodies %<>% separate(Cook_Time, c('Cook_Time (minutes)', 'mins'), sep = " ")
+foodies <- foodies[-c(11)]
+
+knitr::kable(head(foodies,10)[, 1:10], format = 'html')
+``` 
+# 2. Summary Statistics and Data Visualization
+
+## 2.1 Missing Values & Data Preprocessing
+
+### 2.1.1 Missing Values
+
+First We conduct basic data preprocessing. Missing values for dataset are shown in the histogram below.
+
+```{r check_missings}
+foodies[foodies == '-'] = NA
+foodies[foodies == 'NEW'] = NA
+foodies[foodies == ''] = NA
+# observations contains NA
+
+num3 = complete.cases(foodies)
+missing = data.frame(foodies)
+#rownames(missing) = 'missing values'
+gg_miss_var(missing) + theme(text = element_text(size=7)) +
+  ylab('Number of Missing Values in Each Variable')
+```
+
+The plot above shows that the variables reviews, votes and rating has over 350 missing values and Reviews has the highest missing value.
+Due to the large number of missing values in dataset, completely delete missing values will result to a large amount of data loss. Thus, we use variable means to replace missing values. 
+
+```{r}
+
+#foodies = factorsNumeric(foodies)
+foodies$Rating = as.numeric(foodies$Rating)
+foodies$Votes = as.numeric(foodies$Votes)
+foodies$Reviews = as.numeric(foodies$Reviews)
+foodies$`Cook_Time (minutes)` = as.numeric(foodies$`Cook_Time (minutes)`)
+
+#asNumeric = function(x){
+# as.numeric(as.character(x))
+#}
+#factorsNumeric = function(d){
+#  modifyList(d, lapply(d[, sapply(d, is.factor)],asNumeric))
+#}
+
+typeof(foodies$Reviews)
+
+for(i in 1:(ncol(foodies)-1)){
+  foodies$Reviews[is.na(foodies$Reviews[])] <- mean(foodies$Reviews[i], na.rm = TRUE)
+}
+for(i in 1:(ncol(foodies)-1)){
+  foodies$Votes[is.na(foodies$Votes[])] <- mean(foodies$Votes[i], na.rm = TRUE)
+}
+for(i in 1:(ncol(foodies)-1)){
+  foodies$Rating[is.na(foodies$Rating[])] <- mean(foodies$Rating[i], na.rm = TRUE)
+}
+
+for(i in 1:(ncol(foodies)-1)){
+  foodies$Average_Cost[is.na(foodies$Average_Cost[])] <- mean(foodies$Average_Cost[i], na.rm = TRUE)
+}
+for(i in 1:(ncol(foodies)-1)){
+  foodies$Latitude[is.na(foodies$Latitude[])] <- mean(foodies$Latitude[i], na.rm = TRUE)
+}
+for(i in 1:(ncol(foodies)-1)){
+  foodies$Longitude[is.na(foodies$Longitude[])] <- mean(foodies$Longitude[i], na.rm = TRUE)
+}
+```
+
+###  2.1.2 Heatmap
+
+Shown in below is a correlation map for the year 2010 data that describes the relationship between the different features. The heatmap below shows that all numeric variables have a positive correlation. Votes and reviews have especially high positive correlation.
+
+
+```{r heatmap}
+
+
+library(stats)
+library(reshape2)
+#heatmap plot foodies
+temp <- foodies[5:10]
+cormat <- round(cor(temp),2)
+melted_cormat <- melt(cormat)
+  # Get upper triangle of the correlation matrix
+  get_upper_tri <- function(cormat){
+    cormat[lower.tri(cormat)]<- NA
+    return(cormat)
+  }
+upper_tri <- get_upper_tri(cormat)
+# Melt the correlation matrix
+melted_cormat <- melt(upper_tri, na.rm = TRUE)
+# Create a ggheatmap
+ggheatmap <- ggplot(melted_cormat, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed() + ggtitle("foodies heatmap")
+# Print the heatmap
+ggheatmap + 
+theme(axis.text.x = element_text(size=4),
+      axis.text.y = element_text(size=4),
+  axis.title.x = element_blank(),
+  axis.title.y = element_blank(),
+  panel.grid.major = element_blank(),
+  panel.border = element_blank(),
+  panel.background = element_blank(),
+  axis.ticks = element_blank(),
+  legend.justification = c(1, 0),
+  legend.position = c(0.6, 0.7),
+  legend.direction = "horizontal")+
+  guides(fill = guide_colorbar(barwidth = 7, barheight = 1,
+                title.position = "top", title.hjust = 0.5)) +
+  scale_y_discrete(position = "right")
+```
+
+
+
+
+# 3. Methodology
+
+## 3.1 trying to identify the trending restaurants with your own scoring algorithm (can be as simple as the best rating or most votes or both!)
+To understand the variables Ratings and votes better, I fist draw few histograms and plots. Since the variable Votes has so much bigger value than Ratings, I decided to have a new function called score which contain 1 rating and 0.01 votes since the plot shows that they have a positive relationship.
+
+```{r}
+
+summary(foodies$Average_Cost)
+summary(foodies$Minimum_Order)
+summary(foodies$Rating)
+summary(foodies$Votes)
+summary(foodies$Reviews)
+summary(foodies$`Cook_Time (minutes)`)
+
+
+hist(foodies$Votes, ylim = c(0,1000),breaks = 50)
+hist(foodies$Rating, ylim = c(0,550),breaks = 50)
+plot(foodies$Rating ~ foodies$Votes, xlab = "Votes", ylab = "Rating")
+
+foodies$score <- foodies$Rating + 0.01*foodies$Votes
+
+
+hist(foodies$score, ylim = c(0,1300),breaks = 50)
+
+```
+```{r}
+
+newdata <- order(foodies$Restaurant, foodies$score)
+#newdata
+
+newdata <- foodies[order(-(foodies$score)),]
+head(newdata[c("Restaurant","score")], 20)
+```
+I sorted the restaurant with scores and showed top 20 restaurant in the chart. The most popular restaurant is ID_1064, way above others
+
+
+## 3.2 clustering restaurant locations to figure out the optimized FoodieX pick up zones
+```{r}
+#load k-means packages
+library(tidyverse)  # data manipulation
+library(cluster)    # clustering algorithms
+library(factoextra) # clustering algorithms & visualization
+```
+```{r}
+data_location = foodies[c("Restaurant","Latitude","Longitude")]
+location = foodies[c("Latitude","Longitude")]
+distance <- get_dist(data_location)
+fviz_dist(distance, gradient = list(low = "#00AFBB", mid = "white", high = "#FC4E07"))
+```
+
+In k-means clustering, each cluster is represented by its center (i.e, centroid) which corresponds to the mean of points assigned to the cluster.
+
+```{r}
+#is.na.data.frame(data_location)
+sum(data_location$Latitude)
+sum(data_location$Longitude)
+k13 <- kmeans(location, centers = 13, nstart = 25)
+str(k13)
+k13
+
+fviz_cluster(k13, data = location)
+```
+```{r}
+set.seed(123)
+
+# function to compute total within-cluster sum of square 
+wss <- function(k) {
+  kmeans(location, k, nstart = 10 )$tot.withinss
+}
+
+# Compute and plot wss for k = 1 to k = 15
+k.values <- 1:13
+
+# extract wss for 2-15 clusters
+wss_values <- map_dbl(k.values, wss)
+
+plot(k.values, wss_values,
+       type="b", pch = 19, frame = FALSE, 
+       xlab="Number of clusters K",
+       ylab="Total within-clusters sum of squares")
+```
+
+
+
+## 3.3 estimating cook time based on restaurant info
+first I need to initialize variables
+
+```{r}
+min_dis = 1
+location1 = 1
+id = "ID_6321"
+lati = 0
+long = 0
+```
+
+And then I made two loops, the loop i using the restaurant ID and find that latitude and longitude. Second loop find the closest restaurant near by.
+```{r}
+# Loop through the data set and find the latitude and longitude of the desired restaurant ID 
+for (i in 1:2019) {
+  long = data_location$Longitude[i]
+  lati = data_location$Latitude[i]
+    for (j in 1:2019)
+     temp_distance = abs(lati - data_location$Latitude[j]) + abs(long - data_location$Longitude[j])
+      if (temp_distance < min_dis) {
+    min_dis = temp_distance
+    location1 = j
+  }
+}
+
+
+```
+
+For example, I want to see the score for Restaurant 'ID_6321', this algorithm will show me that the score is 6.81 and cook time is about 45 mins
+```{r}
+
+score1 = foodies$score[location1]
+cookTime = foodies$`Cook_Time (minutes)`[location1]
+score1
+cookTime
+
+```
+## 3.4 demonstrating your findings using a data visualization tool
+
+please go to section 2 to see my data visualization(missing value chart and heatmap)
+
+
+# 4 Reference
+
+[Foodies dataset is provided by TechPoint](https://drive.google.com/file/d/1DWleVQ00eG2rRTWNfEvTVWbUg5Aa_Usj/view)
